@@ -250,11 +250,11 @@ def apply_styles(num_data_rows: int) -> None:
 
     style_data = json.dumps([
         {"ranges": [f"{sid}!A1:F1"], "style": {"font": {"bold": True}, "fontSize": 14, "hAlign": 0, "vAlign": 0}},
-        {"ranges": [f"{sid}!A2:F2"], "style": {"font": {"italic": True, "color": "#666666"}, "fontSize": 9, "hAlign": 0}},
-        {"ranges": [f"{sid}!A4:F4"], "style": {"font": {"bold": True, "color": "#FFFFFF"}, "fontSize": 11, "backColor": "#1F4E79", "hAlign": 1, "vAlign": 1}},
+        {"ranges": [f"{sid}!A2:F2"], "style": {"font": {"italic": True}, "foreColor": "#666666", "fontSize": 9, "hAlign": 0}},
+        {"ranges": [f"{sid}!A4:F4"], "style": {"font": {"bold": True}, "foreColor": "#FFFFFF", "fontSize": 11, "backColor": "#1F4E79", "hAlign": 1, "vAlign": 1}},
         {"ranges": [f"{sid}!A5:B{last_row}"], "style": {"font": {"bold": True}, "fontSize": 11, "hAlign": 1, "vAlign": 0}},
         {"ranges": [f"{sid}!C5:E{last_row}"], "style": {"fontSize": 9, "hAlign": 0, "vAlign": 0, "backColor": "#FFF2CC"}},
-        {"ranges": [f"{sid}!F5:F{last_row}"], "style": {"font": {"color": "#006100"}, "fontSize": 9, "hAlign": 0, "vAlign": 0, "backColor": "#C6EFCE"}},
+        {"ranges": [f"{sid}!F5:F{last_row}"], "style": {"foreColor": "#006100", "fontSize": 9, "hAlign": 0, "vAlign": 0, "backColor": "#C6EFCE"}},
     ], ensure_ascii=False)
 
     cmd = [LARK_CLI, "sheets", "+batch-set-style",
