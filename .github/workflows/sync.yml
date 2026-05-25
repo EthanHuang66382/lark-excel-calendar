@@ -1,0 +1,39 @@
+name: APAC Calendar → Sheet Sync
+
+on:
+  schedule:
+    # Every 4 hours: UTC 00,04,08,12,16,20
+    # = UTC+8 08:00, 12:00, 16:00, 20:00, 00:00, 04:00
+    - cron: '0 0,4,8,12,16,20 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: lark-excel-calendar
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install lark-cli
+        run: npm install -g @larksuite/cli
+
+      - name: Configure lark-cli
+        run: echo "${{ secrets.LARK_APP_SECRET }}" | lark-cli config init --app-id "${{ secrets.LARK_APP_ID }}" --app-secret-stdin --brand lark
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Sync calendar to sheet
+        env:
+          LARK_APP_ID: ${{ secrets.LARK_APP_ID }}
+          LARK_APP_SECRET: ${{ secrets.LARK_APP_SECRET }}
+        run: python3 sync_to_sheet.py
