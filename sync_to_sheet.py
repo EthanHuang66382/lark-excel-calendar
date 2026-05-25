@@ -177,6 +177,34 @@ def format_day_slots(slots: list[tuple[datetime, datetime]], day: datetime) -> s
         return ""
     return "\n".join(format_time_range(s, e) for s, e in day_slots)
 
+
+WORK_START_HOUR = 9
+WORK_END_HOUR = 19
+
+
+def compute_common_free(all_person_slots: list[list[tuple[datetime, datetime]]], day: datetime) -> str:
+    day_start = day.replace(hour=WORK_START_HOUR, minute=0, second=0, microsecond=0)
+    day_end = day.replace(hour=WORK_END_HOUR, minute=0, second=0, microsecond=0)
+
+    all_busy = []
+    for person_slots in all_person_slots:
+        all_busy.extend(slots_for_day(person_slots, day))
+    combined_busy = merge_slots(all_busy)
+
+    free_slots = []
+    cursor = day_start
+    for busy_start, busy_end in combined_busy:
+        if busy_start > cursor:
+            free_slots.append((cursor, min(busy_start, day_end)))
+        cursor = max(cursor, busy_end)
+    if cursor < day_end:
+        free_slots.append((cursor, day_end))
+
+    free_slots = [(s, e) for s, e in free_slots if s < day_end and e > day_start]
+    if not free_slots:
+        return ""
+    return "\n".join(format_time_range(s, e) for s, e in free_slots)
+
 # ---------------------------------------------------------------------------
 # Spreadsheet write
 # ---------------------------------------------------------------------------
@@ -216,6 +244,54 @@ def write_to_sheet(rows: list[list[str]]) -> bool:
         log.error("Sheet write exception: %s", e)
         return False
 
+def apply_styles(num_data_rows: int) -> None:
+    last_row = 4 + num_data_rows
+    sid = SHEET_ID
+
+    style_data = json.dumps([
+        {"ranges": [f"{sid}!A1:F1"], "style": {"font": {"bold": True}, "fontSize": 14, "hAlign": 0, "vAlign": 0}},
+        {"ranges": [f"{sid}!A2:F2"], "style": {"font": {"italic": True, "color": "#666666"}, "fontSize": 9, "hAlign": 0}},
+        {"ranges": [f"{sid}!A4:F4"], "style": {"font": {"bold": True, "color": "#FFFFFF"}, "fontSize": 11, "backColor": "#1F4E79", "hAlign": 1, "vAlign": 1}},
+        {"ranges": [f"{sid}!A5:B{last_row}"], "style": {"font": {"bold": True}, "fontSize": 11, "hAlign": 1, "vAlign": 0}},
+        {"ranges": [f"{sid}!C5:E{last_row}"], "style": {"fontSize": 9, "hAlign": 0, "vAlign": 0, "backColor": "#FFF2CC"}},
+        {"ranges": [f"{sid}!F5:F{last_row}"], "style": {"font": {"color": "#006100"}, "fontSize": 9, "hAlign": 0, "vAlign": 0, "backColor": "#C6EFCE"}},
+    ], ensure_ascii=False)
+
+    cmd = [LARK_CLI, "sheets", "+batch-set-style",
+           "--spreadsheet-token", SPREADSHEET_TOKEN,
+           "--data", style_data,
+           "--as", IDENTITY]
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    if result.returncode != 0:
+        log.warning("Style apply failed: %s", result.stderr.strip() or result.stdout.strip())
+    else:
+        log.info("Styles applied")
+
+    # Merge title and subtitle rows
+    for row_range in [f"{sid}!A1:F1", f"{sid}!A2:F2"]:
+        cmd = [LARK_CLI, "sheets", "+merge-cells",
+               "--spreadsheet-token", SPREADSHEET_TOKEN,
+               "--range", row_range,
+               "--merge-type", "MERGE_ALL",
+               "--as", IDENTITY]
+        subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+
+    # Set column widths: A=70, B=50, C/D/E=160, F=160
+    widths = [(1, 1, 70), (2, 2, 50), (3, 5, 160), (6, 6, 160)]
+    for start, end, px in widths:
+        cmd = [LARK_CLI, "sheets", "+update-dimension",
+               "--spreadsheet-token", SPREADSHEET_TOKEN,
+               "--sheet-id", SHEET_ID,
+               "--dimension", "COLUMNS",
+               "--start-index", str(start),
+               "--end-index", str(end),
+               "--fixed-size", str(px),
+               "--as", IDENTITY]
+        subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+
+    log.info("Merge and column widths applied")
+
+
 # ---------------------------------------------------------------------------
 # Build spreadsheet data
 # ---------------------------------------------------------------------------
@@ -243,19 +319,24 @@ def build_sheet_data(dry_run: bool = False) -> list[list[str]]:
     updated_str = now.strftime("%Y-%m-%d %H:%M") + " UTC+8"
 
     rows = [
-        ["APAC管理层Calendar — 忙碌时段 (UTC+8)", "", "", "", ""],
-        [f"Last Updated: {updated_str}", "", "", "", ""],
-        ["", "", "", "", ""],
-        ["日期", "星期", "Aaron", "Alvin", "Thomas"],
+        ["APAC Management Calendar (UTC+8)", "", "", "", "", ""],
+        [f"Last Updated: {updated_str}", "", "", "", "", ""],
+        ["", "", "", "", "", ""],
+        ["Date", "Day", "Aaron", "Alvin", "Thomas", "All Available"],
     ]
+
+    all_person_slot_lists = [person_slots[p["name"]] for p in PEOPLE]
 
     for i in range(SYNC_DAYS):
         day = today + timedelta(days=i)
+        if day.weekday() >= 5:  # skip Saturday(5) and Sunday(6)
+            continue
         date_str = day.strftime("%m/%d")
         weekday_str = WEEKDAY_NAMES[day.weekday()]
         row = [date_str, weekday_str]
         for person in PEOPLE:
             row.append(format_day_slots(person_slots[person["name"]], day))
+        row.append(compute_common_free(all_person_slot_lists, day))
         rows.append(row)
 
     if dry_run:
@@ -290,6 +371,9 @@ def main():
     if not success:
         log.error("Failed to write to spreadsheet")
         sys.exit(1)
+
+    num_data_rows = len(rows) - 4  # subtract header rows
+    apply_styles(num_data_rows)
 
     log.info("Sync complete")
 
