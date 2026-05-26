@@ -322,7 +322,7 @@ def build_sheet_data(dry_run: bool = False) -> list[list[str]]:
         ["APAC Management Calendar (UTC+8)", "", "", "", "", ""],
         [f"Last Updated: {updated_str}", "", "", "", "", ""],
         ["", "", "", "", "", ""],
-        ["Date", "Day", "Aaron", "Alvin", "Thomas", "All Available"],
+        ["Date", "Day", "Aaron busy time", "Alvin busy time", "Thomas busy time", "All available time"],
     ]
 
     all_person_slot_lists = [person_slots[p["name"]] for p in PEOPLE]
