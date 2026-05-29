@@ -41,8 +41,8 @@ TZ_UTC8 = timezone(timedelta(hours=8))
 SPREADSHEET_TOKEN = "RJ1Ush4nmh2aeotgKL8l2QtGgcb"
 SHEET_ID = "d8c36e"
 
-AARON_USER_ID = "ou_a34ef34252262d466f5b7b5ede682293"
-JACKSON_USER_ID = "ou_e6aa709de5c54635c209414d527eab1d"
+AARON_USER_ID = os.getenv("OPEN_ID_AARON", "ou_a34ef34252262d466f5b7b5ede682293")
+JACKSON_USER_ID = os.getenv("OPEN_ID_JACKSON", "ou_e6aa709de5c54635c209414d527eab1d")
 ALVIN_USER_ID = os.getenv("OPEN_ID_ALVIN", "ou_8f0b0a9e14ba9f6a1f0f96566b413009")
 THOMAS_USER_ID = os.getenv("OPEN_ID_THOMAS", "ou_6f6b6f442a67861762a7c2a4b2f909f6")
 DERIC_USER_ID = os.getenv("OPEN_ID_DERIC", "ou_7c886ae31caba4f77f0e3369c033b8aa")
@@ -125,8 +125,10 @@ def get_freebusy(user_id: str, start_date: str, end_date: str) -> list[tuple[dat
         end_utc = item.get("end_time", "")
         if not start_utc or not end_utc:
             continue
-        start_dt = datetime.strptime(start_utc, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).astimezone(TZ_UTC8)
-        end_dt = datetime.strptime(end_utc, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).astimezone(TZ_UTC8)
+        start_clean = start_utc.split(".")[0].rstrip("Z")
+        end_clean = end_utc.split(".")[0].rstrip("Z")
+        start_dt = datetime.strptime(start_clean, "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc).astimezone(TZ_UTC8)
+        end_dt = datetime.strptime(end_clean, "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc).astimezone(TZ_UTC8)
         slots.append((start_dt, end_dt))
     return slots
 
@@ -212,6 +214,9 @@ def compute_common_free(all_person_slots: list[list[tuple[datetime, datetime]]],
 def write_to_sheet(rows: list[list[str]]) -> bool:
     num_rows = len(rows)
     num_cols = max(len(r) for r in rows) if rows else 0
+    if num_cols > 26:
+        log.error("Too many columns (%d > 26), aborting write", num_cols)
+        return False
     end_col = chr(ord("A") + num_cols - 1)
     range_str = f"{SHEET_ID}!A1:{end_col}{num_rows}"
 
@@ -274,7 +279,9 @@ def apply_styles(num_data_rows: int) -> None:
                "--range", row_range,
                "--merge-type", "MERGE_ALL",
                "--as", IDENTITY]
-        subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        if r.returncode != 0:
+            log.warning("Merge-cells failed for %s: %s", row_range, r.stderr.strip() or r.stdout.strip())
 
     # Set column widths: A=70, B=50, C/D/E=160, F=160
     widths = [(1, 1, 70), (2, 2, 50), (3, 5, 160), (6, 6, 160)]
@@ -287,7 +294,9 @@ def apply_styles(num_data_rows: int) -> None:
                "--end-index", str(end),
                "--fixed-size", str(px),
                "--as", IDENTITY]
-        subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        if r.returncode != 0:
+            log.warning("Update-dimension failed col %d-%d: %s", start, end, r.stderr.strip() or r.stdout.strip())
 
     log.info("Merge and column widths applied")
 
