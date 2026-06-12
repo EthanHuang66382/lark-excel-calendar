@@ -53,7 +53,7 @@ PEOPLE = [
     {"name": "Thomas", "user_ids": [THOMAS_USER_ID, DERIC_USER_ID]},
 ]
 
-SYNC_DAYS = 7
+SYNC_DAYS = 30
 LARK_CLI = os.getenv("LARK_CLI_BIN", "lark-cli")
 IDENTITY = "bot" if os.getenv("LARK_APP_ID") else "user"
 
