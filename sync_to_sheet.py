@@ -108,10 +108,14 @@ def get_freebusy(user_id: str, start_date: str, end_date: str) -> list[tuple[dat
             log.error("freebusy query failed for %s: %s", user_id, result.stderr.strip())
             return []
         data = json.loads(result.stdout)
-        if data.get("code") == 0:
-            raw_list = data.get("data", {}).get("freebusy_list", [])
-        elif data.get("ok") and "data" in data:
-            raw_list = data["data"]
+        # lark-cli output format varies by version:
+        #   raw API envelope: {"code":0,"data":{"freebusy_list":[...]}}
+        #   ok envelope:      {"ok":true,"data":{"freebusy_list":[...]}} or {"ok":true,"data":[...]}
+        payload = data.get("data", data)
+        if isinstance(payload, dict):
+            raw_list = payload.get("freebusy_list", [])
+        elif isinstance(payload, list):
+            raw_list = payload
         else:
             log.error("freebusy unexpected response for %s: %s", user_id, str(data)[:200])
             return []
@@ -121,6 +125,9 @@ def get_freebusy(user_id: str, start_date: str, end_date: str) -> list[tuple[dat
 
     slots = []
     for item in raw_list:
+        if not isinstance(item, dict):
+            log.warning("Skipping unexpected freebusy item for %s: %r", user_id, item)
+            continue
         start_utc = item.get("start_time", "")
         end_utc = item.get("end_time", "")
         if not start_utc or not end_utc:
